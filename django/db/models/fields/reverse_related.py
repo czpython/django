@@ -249,6 +249,7 @@ class ManyToManyRel(ForeignObjectRel):
     ``_meta.get_fields()`` returns this class to provide access to the field
     flags for the reverse relation.
     """
+    multi_value = True
 
     def __init__(self, field, to, related_name=None, related_query_name=None,
                  limit_choices_to=None, symmetrical=True, through=None,

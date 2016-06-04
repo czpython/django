@@ -2,7 +2,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import connection
 from django.db.models import Prefetch, QuerySet
-from django.db.models.query import get_prefetcher, prefetch_related_objects
+from django.db.models.query import prefetch_related_objects
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 
@@ -1327,8 +1327,10 @@ class Ticket21760Tests(TestCase):
             house.save()
 
     def test_bug(self):
-        prefetcher = get_prefetcher(self.rooms[0], 'house', 'house')[0]
-        queryset = prefetcher.get_prefetch_queryset(list(Room.objects.all()))[0]
+        # A prefetcher is any class that inherits from PrefetchMixin,
+        # usually a reverse or forward descriptor.
+        prefetcher = Room.house
+        queryset = prefetcher.get_prefetch_objects(list(Room.objects.all()))
         self.assertNotIn(' JOIN ', str(queryset.query))
 
 

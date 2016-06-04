@@ -6,16 +6,16 @@ from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
 from django.db import DEFAULT_DB_ALIAS, models, router, transaction
 from django.db.models import DO_NOTHING
 from django.db.models.base import ModelBase, make_foreign_order_accessors
-from django.db.models.fields.mixins import FieldCacheMixin
 from django.db.models.fields.related import (
     ForeignObject, ForeignObjectRel, ReverseManyToOneDescriptor,
     lazy_related_operation,
 )
+from django.db.models.fields.utils import PrefetchSingleValueMixin
 from django.db.models.query_utils import PathInfo
 from django.utils.functional import cached_property
 
 
-class GenericForeignKey(FieldCacheMixin):
+class GenericForeignKey(PrefetchSingleValueMixin):
     """
     Provide a generic many-to-one relation through the ``content_type`` and
     ``object_id`` fields.
@@ -70,6 +70,10 @@ class GenericForeignKey(FieldCacheMixin):
         model = self.model
         app = model._meta.app_label
         return '%s.%s.%s' % (app, model._meta.object_name, self.name)
+
+    @cached_property
+    def ct_attname(self):
+        return self.model._meta.get_field(self.ct_field).get_attname()
 
     def check(self, **kwargs):
         return [
@@ -168,7 +172,23 @@ class GenericForeignKey(FieldCacheMixin):
             # This should never happen. I love comments like this, don't you?
             raise Exception("Impossible arguments to GFK.get_content_type!")
 
-    def get_prefetch_queryset(self, instances, queryset=None):
+    def get_prefetch_remote_key(self, obj):
+        # returns an identifier for the object referenced
+        # by this content type field given an instance of the referenced object
+        return (obj._get_pk_val(), obj.__class__)
+
+    def get_prefetch_local_key(self, obj):
+        # returns an identifier for the object referenced
+        # by this content type field given an instance
+        # of the object with the content type
+        ct_id = getattr(obj, self.ct_attname)
+
+        if ct_id is None:
+            return None
+        model = self.get_content_type(id=ct_id, using=obj._state.db).model_class()
+        return (model._meta.pk.get_prep_value(getattr(obj, self.fk_field)), model)
+
+    def get_prefetch_objects(self, instances, queryset=None):
         if queryset is not None:
             raise ValueError("Custom queryset can't be used for this lookup.")
 
@@ -177,7 +197,7 @@ class GenericForeignKey(FieldCacheMixin):
         fk_dict = defaultdict(set)
         # We need one instance for each group in order to get the right db:
         instance_dict = {}
-        ct_attname = self.model._meta.get_field(self.ct_field).get_attname()
+        ct_attname = self.ct_attname
         for instance in instances:
             # We avoid looking for values if either ct_id or fkey value is None
             ct_id = getattr(instance, ct_attname)
@@ -192,27 +212,7 @@ class GenericForeignKey(FieldCacheMixin):
             instance = instance_dict[ct_id]
             ct = self.get_content_type(id=ct_id, using=instance._state.db)
             ret_val.extend(ct.get_all_objects_for_this_type(pk__in=fkeys))
-
-        # For doing the join in Python, we have to match both the FK val and the
-        # content type, so we use a callable that returns a (fk, class) pair.
-        def gfk_key(obj):
-            ct_id = getattr(obj, ct_attname)
-            if ct_id is None:
-                return None
-            else:
-                model = self.get_content_type(id=ct_id,
-                                              using=obj._state.db).model_class()
-                return (model._meta.pk.get_prep_value(getattr(obj, self.fk_field)),
-                        model)
-
-        return (
-            ret_val,
-            lambda obj: (obj.pk, obj.__class__),
-            gfk_key,
-            True,
-            self.name,
-            True,
-        )
+        return ret_val
 
     def __get__(self, instance, cls=None):
         if instance is None:
@@ -490,15 +490,45 @@ class ReverseGenericManyToOneDescriptor(ReverseManyToOneDescriptor):
         class Post(Model):
             comments = GenericRelation(Comment)
 
-    ``post.comments`` is a ReverseGenericManyToOneDescriptor instance.
+    ``Post.comments`` is a ``ReverseGenericManyToOneDescriptor`` instance.
+    ``post.comments`` is a ``GenericRelatedObjectManager`` instance.
     """
 
     @cached_property
+    def base_manager(self):
+        return self.rel.model._default_manager
+
+    @cached_property
     def related_manager_cls(self):
-        return create_generic_related_manager(
-            self.rel.model._default_manager.__class__,
-            self.rel,
-        )
+        return create_generic_related_manager(self.base_manager.__class__, self.rel)
+
+    def get_cache_name(self):
+        return self.field.attname
+
+    def get_prefetch_remote_key(self, obj):
+        pk = getattr(obj, self.field.object_id_field_name)
+        return obj._meta.pk.get_prep_value(pk)
+
+    def get_prefetch_local_key(self, obj):
+        return obj.pk
+
+    def get_prefetch_objects(self, instances, queryset=None):
+        instance = instances[0]
+
+        if queryset is None:
+            queryset = self.base_manager.get_queryset()
+
+        queryset._add_hints(instance=instance)
+        queryset = queryset.using(queryset._db or self.base_manager._db)
+
+        content_type = ContentType.objects.db_manager(instance._state.db).get_for_model(
+            instance, for_concrete_model=self.field.for_concrete_model)
+
+        query = {
+            '%s__pk' % self.field.content_type_field_name: content_type.id,
+            '%s__in' % self.field.object_id_field_name: {obj.pk for obj in instances}
+        }
+        return queryset.filter(**query)
 
 
 def create_generic_related_manager(superclass, rel):
@@ -521,7 +551,6 @@ def create_generic_related_manager(superclass, rel):
             self.content_type = content_type
             self.content_type_field_name = rel.field.content_type_field_name
             self.object_id_field_name = rel.field.object_id_field_name
-            self.prefetch_cache_name = rel.field.attname
             self.pk_val = instance.pk
 
             self.core_filters = {
@@ -547,34 +576,10 @@ def create_generic_related_manager(superclass, rel):
 
         def get_queryset(self):
             try:
-                return self.instance._prefetched_objects_cache[self.prefetch_cache_name]
+                return rel.field.get_cached_value(self.instance)
             except (AttributeError, KeyError):
                 queryset = super().get_queryset()
                 return self._apply_rel_filters(queryset)
-
-        def get_prefetch_queryset(self, instances, queryset=None):
-            if queryset is None:
-                queryset = super().get_queryset()
-
-            queryset._add_hints(instance=instances[0])
-            queryset = queryset.using(queryset._db or self._db)
-
-            query = {
-                '%s__pk' % self.content_type_field_name: self.content_type.id,
-                '%s__in' % self.object_id_field_name: {obj.pk for obj in instances}
-            }
-
-            # We (possibly) need to convert object IDs to the type of the
-            # instances' PK in order to match up instances:
-            object_id_converter = instances[0]._meta.pk.to_python
-            return (
-                queryset.filter(**query),
-                lambda relobj: object_id_converter(getattr(relobj, self.object_id_field_name)),
-                lambda obj: obj.pk,
-                False,
-                self.prefetch_cache_name,
-                False,
-            )
 
         def add(self, *objs, bulk=True):
             db = router.db_for_write(self.model, instance=self.instance)

@@ -20,9 +20,9 @@ class GenericForeignKeyTests(SimpleTestCase):
         with self.assertRaisesMessage(Exception, 'Impossible arguments to GFK.get_content_type!'):
             Answer.question.get_content_type()
 
-    def test_incorrect_get_prefetch_queryset_arguments(self):
+    def test_incorrect_get_prefetch_objects_arguments(self):
         with self.assertRaisesMessage(ValueError, "Custom queryset can't be used for this lookup."):
-            Answer.question.get_prefetch_queryset(Answer.objects.all(), Answer.objects.all())
+            Answer.question.get_prefetch_objects(Answer.objects.all(), Answer.objects.all())
 
 
 class GenericRelationTests(TestCase):

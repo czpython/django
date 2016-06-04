@@ -29,6 +29,7 @@ from .related_lookups import (
 from .reverse_related import (
     ForeignObjectRel, ManyToManyRel, ManyToOneRel, OneToOneRel,
 )
+from .utils import FieldCacheMixin
 
 RECURSIVE_RELATIONSHIP_CONSTANT = 'self'
 
@@ -1088,6 +1089,8 @@ class ManyToManyField(RelatedField):
     many_to_one = False
     one_to_many = False
     one_to_one = False
+
+    multi_value = True
 
     rel_class = ManyToManyRel
 
