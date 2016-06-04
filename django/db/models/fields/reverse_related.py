@@ -13,9 +13,10 @@ from django.core import exceptions
 from django.utils.functional import cached_property
 
 from . import BLANK_CHOICE_DASH
+from .utils import FieldCacheMixin
 
 
-class ForeignObjectRel:
+class ForeignObjectRel(FieldCacheMixin):
     """
     Used by ForeignObject to store information about the relation.
 
@@ -161,9 +162,6 @@ class ForeignObjectRel:
         if self.related_name:
             return self.related_name
         return opts.model_name + ('_set' if self.multiple else '')
-
-    def get_cache_name(self):
-        return "_%s_cache" % self.get_accessor_name()
 
     def get_path_info(self):
         return self.field.get_reverse_path_info()

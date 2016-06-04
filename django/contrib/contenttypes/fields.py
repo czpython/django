@@ -10,11 +10,12 @@ from django.db.models.fields.related import (
     ForeignObject, ForeignObjectRel, ReverseManyToOneDescriptor,
     lazy_related_operation,
 )
+from django.db.models.fields.utils import FieldCacheMixin
 from django.db.models.query_utils import PathInfo
 from django.utils.functional import cached_property
 
 
-class GenericForeignKey:
+class GenericForeignKey(FieldCacheMixin):
     """
     Provide a generic many-to-one relation through the ``content_type`` and
     ``object_id`` fields.
@@ -48,7 +49,6 @@ class GenericForeignKey:
     def contribute_to_class(self, cls, name, **kwargs):
         self.name = name
         self.model = cls
-        self.cache_attr = "_%s_cache" % name
         cls._meta.add_field(self, private=True)
         setattr(cls, name, self)
 
@@ -206,10 +206,8 @@ class GenericForeignKey:
                 lambda obj: (obj._get_pk_val(), obj.__class__),
                 gfk_key,
                 True,
-                self.name)
-
-    def is_cached(self, instance):
-        return hasattr(instance, self.cache_attr)
+                self.name,
+                False)
 
     def __get__(self, instance, cls=None):
         if instance is None:
@@ -224,8 +222,8 @@ class GenericForeignKey:
         pk_val = getattr(instance, self.fk_field)
 
         try:
-            rel_obj = getattr(instance, self.cache_attr)
-        except AttributeError:
+            rel_obj = self.get_cached_value(instance)
+        except KeyError:
             rel_obj = None
         else:
             if rel_obj and (ct_id != self.get_content_type(obj=rel_obj, using=instance._state.db).id or
@@ -241,7 +239,8 @@ class GenericForeignKey:
                 rel_obj = ct.get_object_for_this_type(pk=pk_val)
             except ObjectDoesNotExist:
                 pass
-        setattr(instance, self.cache_attr, rel_obj)
+
+        self.set_cached_value(instance=instance, value=rel_obj)
         return rel_obj
 
     def __set__(self, instance, value):
@@ -253,7 +252,7 @@ class GenericForeignKey:
 
         setattr(instance, self.ct_field, ct)
         setattr(instance, self.fk_field, fk)
-        setattr(instance, self.cache_attr, value)
+        self.set_cached_value(instance=instance, value=value)
 
 
 class GenericRel(ForeignObjectRel):
@@ -539,7 +538,8 @@ def create_generic_related_manager(superclass, rel):
                     lambda relobj: object_id_converter(getattr(relobj, self.object_id_field_name)),
                     lambda obj: obj._get_pk_val(),
                     False,
-                    self.prefetch_cache_name)
+                    self.prefetch_cache_name,
+                    True)
 
         def add(self, *objs, bulk=True):
             db = router.db_for_write(self.model, instance=self.instance)

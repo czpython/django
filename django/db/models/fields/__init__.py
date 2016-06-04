@@ -19,6 +19,7 @@ from django.core.exceptions import FieldDoesNotExist  # NOQA
 from django.db import connection, connections, router
 from django.db.models.constants import LOOKUP_SEP
 from django.db.models.query_utils import DeferredAttribute, RegisterLookupMixin
+from django.db.models.fields.utils import FieldCacheMixin
 from django.utils import timezone
 from django.utils.datastructures import DictWrapper
 from django.utils.dateparse import (
@@ -87,7 +88,7 @@ def return_None():
 
 
 @total_ordering
-class Field(RegisterLookupMixin):
+class Field(RegisterLookupMixin, FieldCacheMixin):
     """Base class for all field types"""
 
     # Designates whether empty strings fundamentally are allowed at the
@@ -719,9 +720,6 @@ class Field(RegisterLookupMixin):
         attname = self.get_attname()
         column = self.db_column or attname
         return attname, column
-
-    def get_cache_name(self):
-        return '_%s_cache' % self.name
 
     def get_internal_type(self):
         return self.__class__.__name__
