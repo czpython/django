@@ -18,8 +18,8 @@ from django.core import checks, exceptions, validators
 from django.core.exceptions import FieldDoesNotExist  # NOQA
 from django.db import connection, connections, router
 from django.db.models.constants import LOOKUP_SEP
-from django.db.models.query_utils import DeferredAttribute, RegisterLookupMixin
 from django.db.models.fields.utils import FieldCacheMixin
+from django.db.models.query_utils import DeferredAttribute, RegisterLookupMixin
 from django.utils import timezone
 from django.utils.datastructures import DictWrapper
 from django.utils.dateparse import (
