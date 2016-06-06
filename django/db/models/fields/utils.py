@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+NOT_PROVIDED = object()
+
 
 class FieldCacheMixin(object):
     """
@@ -10,16 +12,22 @@ class FieldCacheMixin(object):
     def get_cache_name(self):
         return self.name
 
-    def get_cached_value(self, instance):
+    def get_cached_value(self, instance, default=NOT_PROVIDED):
         cache_name = self.get_cache_name()
-        return instance._state.get_fields_cache()[cache_name]
+
+        try:
+            return instance._state.cache[cache_name]
+        except KeyError:
+            if default is NOT_PROVIDED:
+                raise
+            return default
 
     def is_cached(self, instance):
         cache_name = self.get_cache_name()
-        return cache_name in instance._state.get_fields_cache()
+        return cache_name in instance._state.cache
 
     def set_cached_value(self, instance, value):
-        instance._state.set_fields_cache(field=self, value=value)
+        instance._state.cache[self.get_cache_name()] = value
 
     def delete_cached_value(self, instance):
         cache_name = self.get_cache_name()

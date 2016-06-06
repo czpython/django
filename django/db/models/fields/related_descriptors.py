@@ -133,7 +133,7 @@ class ForwardManyToOneDescriptor:
             for rel_obj in queryset:
                 instance = instances_dict[rel_obj_attr(rel_obj)]
                 remote_field.set_cached_value(instance=rel_obj, value=instance)
-        return queryset, rel_obj_attr, instance_attr, True, self.field.get_cache_name(), True
+        return queryset, rel_obj_attr, instance_attr, True, self.field.get_cache_name(), False
 
     def get_object(self, instance):
         qs = self.get_queryset(instance=instance)
@@ -172,7 +172,7 @@ class ForwardManyToOneDescriptor:
                 if not remote_field.multiple:
                     remote_field.set_cached_value(instance=rel_obj, value=instance)
 
-            self.field.set_cached_value(instance=instance, value=rel_obj)
+            self.field.set_cached_value(instance, value=rel_obj)
 
         if rel_obj is None and not self.field.null:
             raise self.RelatedObjectDoesNotExist(
@@ -223,10 +223,7 @@ class ForwardManyToOneDescriptor:
             # populated the cache, then we don't care - we're only accessing
             # the object to invalidate the accessor cache, so there's no
             # need to populate the cache just to expire it again.
-            try:
-                related = self.field.get_cached_value(instance)
-            except KeyError:
-                related = None
+            related = self.field.get_cached_value(instance, default=None)
 
             # If we've got an old related object, we need to clear out its
             # cache. This cache also might not exist if the related object
@@ -296,6 +293,9 @@ class ReverseOneToOneDescriptor:
     """
 
     def __init__(self, related):
+        # following the example above, related is an
+        # instance of OneToOneRel which represents the
+        # reverse restaurant field (place.restaurant)
         self.related = related
 
     @cached_property
@@ -335,7 +335,7 @@ class ReverseOneToOneDescriptor:
         for rel_obj in queryset:
             instance = instances_dict[rel_obj_attr(rel_obj)]
             related_field.set_cached_value(instance=rel_obj, value=instance)
-        return queryset, rel_obj_attr, instance_attr, True, self.related.get_cache_name(), True
+        return queryset, rel_obj_attr, instance_attr, True, self.related.get_cache_name(), False
 
     def __get__(self, instance, cls=None):
         """
@@ -578,7 +578,7 @@ def create_reverse_many_to_one_manager(superclass, rel):
                 instance = instances_dict[rel_obj_attr(rel_obj)]
                 setattr(rel_obj, self.field.name, instance)
             cache_name = self.field.related_query_name()
-            return queryset, rel_obj_attr, instance_attr, False, cache_name, True
+            return queryset, rel_obj_attr, instance_attr, False, cache_name, False
 
         def add(self, *objs, bulk=True):
             self._remove_prefetched_objects()
@@ -876,7 +876,7 @@ def create_forward_many_to_many_manager(superclass, rel, reverse):
                 ),
                 False,
                 self.prefetch_cache_name,
-                True,
+                False,
             )
 
         def add(self, *objs):

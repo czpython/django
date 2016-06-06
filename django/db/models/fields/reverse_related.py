@@ -166,6 +166,9 @@ class ForeignObjectRel(FieldCacheMixin):
     def get_path_info(self):
         return self.field.get_reverse_path_info()
 
+    def get_cache_name(self):
+        return self.get_accessor_name()
+
 
 class ManyToOneRel(ForeignObjectRel):
     """

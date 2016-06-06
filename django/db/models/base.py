@@ -379,13 +379,6 @@ class ModelState:
         self.adding = True
         self.cache = {}
 
-    def set_fields_cache(self, field, value):
-        self.cache[field.get_cache_name()] = value
-        return self.cache
-
-    def get_fields_cache(self):
-        return self.cache
-
 
 class Model(metaclass=ModelBase):
 

@@ -1509,7 +1509,7 @@ def prefetch_one_level(instances, prefetcher, lookup, level):
     # The 'values to be matched' must be hashable as they will be used
     # in a dictionary.
 
-    rel_qs, rel_obj_attr, instance_attr, single, cache_name, is_cache = (
+    rel_qs, rel_obj_attr, instance_attr, single, cache_name, is_descriptor = (
         prefetcher.get_prefetch_queryset(instances, lookup.get_current_queryset(level)))
     # We have to handle the possibility that the QuerySet we just got back
     # contains some prefetch_related lookups. We don't want to trigger the
@@ -1558,18 +1558,18 @@ def prefetch_one_level(instances, prefetcher, lookup, level):
         if single:
             val = vals[0] if vals else None
 
-            if not as_attr and is_cache:
-                # No to_attr has been given for this prefetch operation
-                # default to using the "cache_name" which combined with
-                # "is_cache" means, store the value of the field in the
-                # object's field cache.
-                obj._state.cache[cache_name] = val
-            else:
-                to_attr = to_attr if as_attr else cache_name
-                # It's important to note that to_attr can be a
-                # related field name which would trigger related descriptor
-                # class.
+            if as_attr:
+                # A to_attr has been given for the prefetch
                 setattr(obj, to_attr, val)
+            elif is_descriptor:
+                # cache_name points to a field name in obj
+                # this field is likely a descriptor for a related object.
+                setattr(obj, cache_name, val)
+            else:
+                # No to_attr has been given for this prefetch operation
+                # Using "cache_name" combined with "is_descriptor" means
+                # store the value of the field in the object's field cache.
+                obj._state.cache[cache_name] = val
         else:
             if as_attr:
                 setattr(obj, to_attr, vals)

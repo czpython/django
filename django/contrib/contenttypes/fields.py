@@ -207,7 +207,7 @@ class GenericForeignKey(FieldCacheMixin):
                 gfk_key,
                 True,
                 self.name,
-                False)
+                True)
 
     def __get__(self, instance, cls=None):
         if instance is None:
@@ -221,17 +221,16 @@ class GenericForeignKey(FieldCacheMixin):
         ct_id = getattr(instance, f.get_attname(), None)
         pk_val = getattr(instance, self.fk_field)
 
-        try:
-            rel_obj = self.get_cached_value(instance)
-        except KeyError:
-            rel_obj = None
-        else:
-            if rel_obj and (ct_id != self.get_content_type(obj=rel_obj, using=instance._state.db).id or
-                            rel_obj._meta.pk.to_python(pk_val) != rel_obj._get_pk_val()):
-                rel_obj = None
+        rel_obj = self.get_cached_value(instance, default=None)
 
         if rel_obj is not None:
-            return rel_obj
+            ct_match = ct_id == self.get_content_type(obj=rel_obj, using=instance._state.db).id
+            pk_match = rel_obj._meta.pk.to_python(pk_val) == rel_obj._get_pk_val()
+
+            if ct_match and pk_match:
+                return rel_obj
+            else:
+                rel_obj = None
 
         if ct_id is not None:
             ct = self.get_content_type(id=ct_id, using=instance._state.db)
@@ -240,7 +239,7 @@ class GenericForeignKey(FieldCacheMixin):
             except ObjectDoesNotExist:
                 pass
 
-        self.set_cached_value(instance=instance, value=rel_obj)
+        self.set_cached_value(instance, value=rel_obj)
         return rel_obj
 
     def __set__(self, instance, value):
@@ -252,7 +251,7 @@ class GenericForeignKey(FieldCacheMixin):
 
         setattr(instance, self.ct_field, ct)
         setattr(instance, self.fk_field, fk)
-        self.set_cached_value(instance=instance, value=value)
+        self.set_cached_value(instance, value)
 
 
 class GenericRel(ForeignObjectRel):
@@ -539,7 +538,7 @@ def create_generic_related_manager(superclass, rel):
                     lambda obj: obj._get_pk_val(),
                     False,
                     self.prefetch_cache_name,
-                    True)
+                    False)
 
         def add(self, *objs, bulk=True):
             db = router.db_for_write(self.model, instance=self.instance)
