@@ -1563,12 +1563,12 @@ def prefetch_one_level(instances, prefetcher, lookup, level):
                 setattr(obj, to_attr, val)
             elif is_descriptor:
                 # cache_name points to a field name in obj
-                # this field is likely a descriptor for a related object.
+                # this field is a descriptor for a related object.
                 setattr(obj, cache_name, val)
             else:
                 # No to_attr has been given for this prefetch operation
-                # Using "cache_name" combined with "is_descriptor" means
-                # store the value of the field in the object's field cache.
+                # and the cache_name does not point to a descriptor.
+                # store the value of the field directly in the object's field cache.
                 obj._state.cache[cache_name] = val
         else:
             if as_attr:
