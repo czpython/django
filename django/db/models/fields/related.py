@@ -29,7 +29,6 @@ from .related_lookups import (
 from .reverse_related import (
     ForeignObjectRel, ManyToManyRel, ManyToOneRel, OneToOneRel,
 )
-from .utils import FieldCacheMixin
 
 RECURSIVE_RELATIONSHIP_CONSTANT = 'self'
 
